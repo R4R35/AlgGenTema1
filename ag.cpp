@@ -6,13 +6,14 @@
 #include <random>
 #include <bitset>
 #include <functional>
+#include <chrono>
 
 using namespace std;
 // =========================== CONSTANTS =======================================
 
 
 const float PI = 2*asin(1.0);
-
+const float EPSILON = 1e-8;
 
 // ============================ HELPER FUNCTIONS =================================
 
@@ -118,7 +119,7 @@ struct HCResult {
     vector<bool> X;
     float best_val;
     int nrIterations;
-    //double time;
+    double time;
 };
 
 struct bounds {
@@ -132,12 +133,13 @@ HCResult HillClimbing(const function<float(const vector<float>&)>& f,vector<bool
     int iter=0;
     bool improved = true;
     float eval_current = f(decode_Bits(vc,D,l,bd.low,bd.high));
+    auto begin  = chrono::high_resolution_clock::now();
 
     while (improved && iter < max_iterations) {
         improved= false;
         iter++;
 
-        float best_neighbour = numeric_limits<float>::infinity(); //we generate the neighbour. the first one is -infinity;
+        float best_neighbour = numeric_limits<float>::infinity(); //we generate the neighbour. the first one is +infinity;
         for (int ii= 0;ii<vc.size();++ii) {
 
             vc[ii]=!vc[ii];
@@ -163,27 +165,91 @@ HCResult HillClimbing(const function<float(const vector<float>&)>& f,vector<bool
                 }
             };
         }
-        if (variant != "first") {
+        if (variant != "first" && pos !=-1 && best_neighbour <eval_current ) {
         //if we managed to find a global improvement(global or worst)
-            if (pos !=-1 && best_neighbour <eval_current ) {
-                eval_current = best_neighbour;
-                vc[pos]=!vc[pos];
-                improved = true;
-            }
+            eval_current = best_neighbour;
+            vc[pos]=!vc[pos];
+            improved = true;
         }
 
     }
-    return {vc,eval_current,iter};
+    auto end = chrono::high_resolution_clock::now();
+    float elapsed = chrono::duration_cast<chrono::duration<float>>(end - begin).count();
+    return {vc,eval_current,iter,elapsed};
 }
+//========================================== SIMULATED ANNEALING ===================================
+//========================================== SIMULATED ANNEALING ===================================
+struct sa_result {
+    vector<bool> X;
+    double best_val;
+    int nrIterations;
+    double time;
+};
 
+sa_result SimulatedAnnealing(const function<float(const vector<float>&)>& f,
+                             vector<bool> vc, int D, int l,
+                             bounds &bd, int max_iterations = 100000)
+{
+    float T = 1.0f;           // temperatura inițială
+    const float T_min = 1e-5; // temperatura minimă
+    const float alpha = 0.99f;
+    int iters = 0;
 
+    mt19937 rng(time(0));
+    uniform_real_distribution<float> urd(0.0f, 1.0f);
+
+    auto begin = chrono::high_resolution_clock::now();
+
+    float eval_vc = f(decode_Bits(vc, D, l, bd.low, bd.high));
+    float best_val = eval_vc;
+    vector<bool> best_sol = vc;
+
+    while (T > T_min && iters < max_iterations) {
+        vector<bool> neighbour = random_bits(D, l);
+        float eval_neighbour = f(decode_Bits(neighbour, D, l, bd.low, bd.high));
+
+        float delta = eval_neighbour - eval_vc;
+
+        if (delta > 0) {
+            vc = neighbour;
+            eval_vc = eval_neighbour;
+        } else {
+            float p = exp(delta / T);
+            if (urd(rng) < p) {
+                vc = neighbour;
+                eval_vc = eval_neighbour;
+            }
+        }
+
+        if (eval_vc > best_val) {
+            best_val = eval_vc;
+            best_sol = vc;
+        }
+
+        T *= alpha;
+        ++iters;
+    }
+
+    auto end = chrono::high_resolution_clock::now();
+    double elapsed = chrono::duration<double>(end - begin).count();
+
+    return {best_sol, best_val, iters, elapsed};
+}
 //========================================== MAIN ====================
 int main(){
-    vector<bool> X =random_bits(10,20);
+    vector<bool> X =random_bits(5,20);
     bounds bd={-5.12,5.12};
     vector<string> variant = {"first","best","worst"};
-    HCResult results= HillClimbing(rastrigin,X,10,20,bd,variant[0]);
+    HCResult results= HillClimbing(rastrigin,X,5,20,bd,variant[0]);
+    sa_result saResult = SimulatedAnnealing(rastrigin,X,5,20,bd);
+    cout<<"Simulated Annealing: "<<endl;
+    cout<<"Minimum Value: " << saResult.best_val<<endl;
+    cout<<"Nr of iterations: "<<saResult.nrIterations<<endl;
+    cout<<"Time: "<<saResult.time<<endl;
+
+    cout<<"Hillclimbing: "<<endl;
     cout<<"Minimum Value: "<< results.best_val<<endl;
     cout<<"Nr of iterations: "<< results.nrIterations << endl;
+    cout<<"Average Time: "<< results.time<< endl;
     return 0;
 }
