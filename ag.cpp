@@ -54,8 +54,8 @@ float decode(vector<bool> v,float low,float high){
     return x;
 }
 
-vector<float> decode_Bits(vector<bool> bitstring,int D,int l, float low,float high) {
-    vector<float> X(D);
+vector<double> decode_Bits(vector<bool> bitstring,int D,int l, float low,float high) {
+    vector<double> X(D);
 
     for (int i = 0; i < D; i++) {
     unsigned long long int sum =0;
@@ -66,8 +66,8 @@ vector<float> decode_Bits(vector<bool> bitstring,int D,int l, float low,float hi
         }
 
         //we normalize it in [0,1]
-        float div = pow(2,l)-1;
-        float x = float(sum) / div;
+        double div = pow(2,l)-1;
+        double x = double(sum) / div;
 
         //now X[i] is within [low,high]
         X[i] = low + x*(high-low);
@@ -77,36 +77,36 @@ vector<float> decode_Bits(vector<bool> bitstring,int D,int l, float low,float hi
 
 //================================= MATH FUNCTIONS ===========================================
 
-float rastrigin(vector<float> X){
+double rastrigin(vector<double> X){
     size_t n = X.size();
-    float sum = 10*n;
+    double sum = 10*n;
     for(int ii= 0; ii< n; ++ii){
         sum += pow(X[ii],2) -10 *cos(2 * PI * X[ii]);
     }
     return sum;
 }
 
-float deJong(vector<float> X){
+double deJong(vector<double> X){
     size_t n = X.size();
-    float sum =0;
+    double sum =0;
     for(int ii = 0; ii < n; ++ii){
         sum +=pow(X[ii],2);
     }
     return sum;
 }
 
-float schwefel(vector<float> X){
+double schwefel(vector<double> X){
     float n = X.size();
-    float sum =0;
+    double sum =0;
     for(int ii = 0; ii<n;++ii){
         sum +=(-X[ii] * sin((sqrt(fabs(X[ii])))));
     }
     return sum;
 }
 
-float michalewicz(vector<float> X){
+double michalewicz(vector<double> X){
     float n = X.size();
-    float sum = 0;
+    double sum = 0;
     for(int ii = 0; ii< n; ++ii){
         sum += sin(X[ii])*(pow(sin(ii*pow(X[ii],2))/PI,20));
     }
@@ -117,7 +117,7 @@ float michalewicz(vector<float> X){
 //========================================= HILL CLIMB ===========================================
 struct HCResult {
     vector<bool> X;
-    float best_val;
+    double best_val;
     int nrIterations;
     double time;
 };
@@ -127,19 +127,20 @@ struct bounds {
     string name;
 };
 
-HCResult HillClimbing(const function<float(const vector<float>&)>& f,vector<bool>vc , int D,int l, bounds &bd, string& variant, int max_iterations = 100000) {
+HCResult HillClimbing(const function<double(const vector<double>&)>& f,vector<bool>vc , int D,int l, bounds &bd, string& variant, int max_iterations = 100000) {
 
     int pos =-1;
     int iter=0;
     bool improved = true;
-    float eval_current = f(decode_Bits(vc,D,l,bd.low,bd.high));
+    double eval_current = f(decode_Bits(vc,D,l,bd.low,bd.high));
     auto begin  = chrono::high_resolution_clock::now();
+
+    double best_neighbour = numeric_limits<double>::infinity(); //we generate the neighbour. the first one is +infinity;
 
     while (improved && iter < max_iterations) {
         improved= false;
         iter++;
 
-        float best_neighbour = numeric_limits<float>::infinity(); //we generate the neighbour. the first one is +infinity;
         for (int ii= 0;ii<vc.size();++ii) {
 
             vc[ii]=!vc[ii];
@@ -148,6 +149,7 @@ HCResult HillClimbing(const function<float(const vector<float>&)>& f,vector<bool
 
             if (variant == "first" && eval < best_neighbour ) {
                 eval_current = eval;
+                best_neighbour = eval;
                 vc[ii]=!vc[ii];
                 improved = true;
                 break;
@@ -159,14 +161,14 @@ HCResult HillClimbing(const function<float(const vector<float>&)>& f,vector<bool
             };
 
             if (variant == "worst" && eval < eval_current) {
-                if (pos ==-1 || eval > best_neighbour) {
+                if (pos ==-1 || eval < best_neighbour) {
                     best_neighbour = eval;
                     pos = ii;
                 }
             };
         }
         if (variant != "first" && pos !=-1 && best_neighbour <eval_current ) {
-        //if we managed to find a global improvement(global or worst)
+        //if we managed to find a global improvement(for best or worst)
             eval_current = best_neighbour;
             vc[pos]=!vc[pos];
             improved = true;
@@ -178,7 +180,6 @@ HCResult HillClimbing(const function<float(const vector<float>&)>& f,vector<bool
     return {vc,eval_current,iter,elapsed};
 }
 //========================================== SIMULATED ANNEALING ===================================
-//========================================== SIMULATED ANNEALING ===================================
 struct sa_result {
     vector<bool> X;
     double best_val;
@@ -186,17 +187,18 @@ struct sa_result {
     double time;
 };
 
-sa_result SimulatedAnnealing(const function<float(const vector<float>&)>& f,
+sa_result SimulatedAnnealing(const function<double(const vector<double>&)>& f,
                              vector<bool> vc, int D, int l,
                              bounds &bd, int max_iterations = 100000)
 {
-    float T = 1.0f;           // temperatura inițială
-    const float T_min = 1e-5; // temperatura minimă
+    float T = 1000.0f;
+    const float T_min = 1e-5;
     const float alpha = 0.99f;
     int iters = 0;
 
-    mt19937 rng(time(0));
+    mt19937 rng(chrono::steady_clock::now().time_since_epoch().count());
     uniform_real_distribution<float> urd(0.0f, 1.0f);
+    uniform_int_distribution<int> uid(0, D * l - 1);
 
     auto begin = chrono::high_resolution_clock::now();
 
@@ -205,23 +207,28 @@ sa_result SimulatedAnnealing(const function<float(const vector<float>&)>& f,
     vector<bool> best_sol = vc;
 
     while (T > T_min && iters < max_iterations) {
-        vector<bool> neighbour = random_bits(D, l);
-        float eval_neighbour = f(decode_Bits(neighbour, D, l, bd.low, bd.high));
+        vector<bool> neighbour = vc;
+        int num_flips = 1 + rng() % 2; // random flip of 1,2 or 3 bits
+        for (int i = 0; i < num_flips; i++) {
+            int flip_pos = uid(rng);
+            neighbour[flip_pos] = !neighbour[flip_pos];
+        }
 
-        float delta = eval_neighbour - eval_vc;
+        double eval_neighbour = f(decode_Bits(neighbour, D, l, bd.low, bd.high));
+        double delta = eval_neighbour - eval_vc;
 
-        if (delta > 0) {
+        if (delta < 0) {
             vc = neighbour;
             eval_vc = eval_neighbour;
         } else {
-            float p = exp(delta / T);
+            float p = exp(-delta / T);
             if (urd(rng) < p) {
                 vc = neighbour;
                 eval_vc = eval_neighbour;
             }
         }
 
-        if (eval_vc > best_val) {
+        if (eval_vc < best_val) {
             best_val = eval_vc;
             best_sol = vc;
         }
@@ -237,19 +244,25 @@ sa_result SimulatedAnnealing(const function<float(const vector<float>&)>& f,
 }
 //========================================== MAIN ====================
 int main(){
-    vector<bool> X =random_bits(5,20);
+    int D = 30;
+    int l = 20;
+    int i = 0;
+    vector<bool> X =random_bits(D,l);
     bounds bd={-5.12,5.12};
     vector<string> variant = {"first","best","worst"};
-    HCResult results= HillClimbing(rastrigin,X,5,20,bd,variant[0]);
-    sa_result saResult = SimulatedAnnealing(rastrigin,X,5,20,bd);
+
+    sa_result saResult = SimulatedAnnealing(rastrigin,X,D,l,bd);
     cout<<"Simulated Annealing: "<<endl;
     cout<<"Minimum Value: " << saResult.best_val<<endl;
     cout<<"Nr of iterations: "<<saResult.nrIterations<<endl;
-    cout<<"Time: "<<saResult.time<<endl;
-
-    cout<<"Hillclimbing: "<<endl;
+    cout<<"Time: "<<saResult.time<<endl<<endl;
+/*
+    HCResult results= HillClimbing(rastrigin,X,D,l,bd,variant[i]);
+    cout<<"Hill Climbing with variant : "<<variant[i]<<endl;
     cout<<"Minimum Value: "<< results.best_val<<endl;
     cout<<"Nr of iterations: "<< results.nrIterations << endl;
     cout<<"Average Time: "<< results.time<< endl;
+*/
+
     return 0;
 }
