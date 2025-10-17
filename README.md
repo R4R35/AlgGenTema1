@@ -1,0 +1,1 @@
+An implementetion of Hill Climbing and Simulated Annealing for finding the global minima for the Rastrigin,DeJong,Michalewicz and Schwefel's mathematical functions. The HillClimbing algorithm has 3 variants, first, best and worst improvement. 
