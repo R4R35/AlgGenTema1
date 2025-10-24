@@ -7,6 +7,7 @@
 #include <bitset>
 #include <functional>
 #include <chrono>
+#include <iomanip>
 
 using namespace std;
 // =========================== CONSTANTS =======================================
@@ -27,20 +28,7 @@ vector<bool> random_bits(int D,int l){
     }
     return r;
 }
-/*
-Nu cred ca sunt necesare implementarile la functiile astea still
 
-vector<bool> cstringToVect(char* s){
-    vector<bool>v;
-    int l = strlen(s);
-    for(int  ii =0 ;ii< l;++ii){
-        v.push_back(s[ii] - '0');
-    }
-    return v;
-}
-
-
- */
 float decode(vector<bool> v,float low,float high){
     unsigned long long int sum = 0;
     unsigned long long int mul = 1;
@@ -136,7 +124,7 @@ HCResult HillClimbing(const function<double(const vector<double>&)>& f,
     double eval_current = f(decode_Bits(vc,D,l,bd.low,bd.high));
     auto begin  = chrono::high_resolution_clock::now();
 
-    double best_neighbour = numeric_limits<double>::infinity(); // as in your original
+    double best_neighbour = numeric_limits<double>::infinity();
 
     while (improved && iter < max_iterations) {
         improved= false;
@@ -246,14 +234,13 @@ struct sa_result {
     int nrIterations;
     double time;
 };
-
 sa_result SimulatedAnnealing(const function<double(const vector<double>&)>& f,
                              vector<bool> vc, int D, int l,
-                             bounds &bd, int max_iterations = 100000)
+                             bounds &bd, int max_iterations = 500000)
 {
     float T = 1000.0f;
-    const float T_min = 1e-5;
-    const float alpha = 0.99f;
+    const float T_min = 1e-8;
+    const float alpha = 0.995f;
     int iters = 0;
 
     mt19937 rng(chrono::steady_clock::now().time_since_epoch().count());
@@ -262,35 +249,39 @@ sa_result SimulatedAnnealing(const function<double(const vector<double>&)>& f,
 
     auto begin = chrono::high_resolution_clock::now();
 
-    float eval_vc = f(decode_Bits(vc, D, l, bd.low, bd.high));
-    float best_val = eval_vc;
+    double eval_vc = f(decode_Bits(vc, D, l, bd.low, bd.high));
+    double best_val = eval_vc;
     vector<bool> best_sol = vc;
 
     while (T > T_min && iters < max_iterations) {
         vector<bool> neighbour = vc;
-        int num_flips = 1 + rng() % 2; // random flip of 1,2 or 3 bits
-        for (int i = 0; i < num_flips; i++) {
+
+        // hybrid neighborhood search
+        if (urd(rng) < 0.5) {
+            // flip one bit
             int flip_pos = uid(rng);
             neighbour[flip_pos] = !neighbour[flip_pos];
+        } else {
+            // flip two bits (like in HC)
+            int var = uid(rng) % D;
+            int base = var * l;
+            int bit1 = uid(rng) % l;
+            int bit2 = (bit1 + 1) % l;
+            neighbour[base + bit1] = !neighbour[base + bit1];
+            neighbour[base + bit2] = !neighbour[base + bit2];
         }
 
         double eval_neighbour = f(decode_Bits(neighbour, D, l, bd.low, bd.high));
         double delta = eval_neighbour - eval_vc;
 
-        if (delta < 0) {
+        if (delta < 0 || urd(rng) < exp(-delta / T)) {
             vc = neighbour;
             eval_vc = eval_neighbour;
-        } else {
-            float p = exp(-delta / T);
-            if (urd(rng) < p) {
-                vc = neighbour;
-                eval_vc = eval_neighbour;
-            }
-        }
 
-        if (eval_vc < best_val) {
-            best_val = eval_vc;
-            best_sol = vc;
+            if (eval_vc < best_val) {
+                best_val = eval_vc;
+                best_sol = vc;
+            }
         }
 
         T *= alpha;
@@ -306,9 +297,9 @@ sa_result SimulatedAnnealing(const function<double(const vector<double>&)>& f,
 int main(){
     int D = 30;
     int l = 20;
-    int i = 0;
+    int i = 1;
     vector<bool> X =random_bits(D,l);
-    bounds bd={-500,500};
+    bounds bd={-5.12,5.12};
     vector<string> variant = {"first","best","worst"};
 
     sa_result saResult = SimulatedAnnealing(rastrigin,X,D,l,bd);
@@ -317,12 +308,13 @@ int main(){
     cout<<"Nr of iterations: "<<saResult.nrIterations<<endl;
     cout<<"Time: "<<saResult.time<<endl<<endl;
 
-    HCResult results= HillClimbing(schwefel,X,D,l,bd,variant[1]);
-    cout<<"Hill Climbing with variant : "<<variant[i]<<endl;
+/*
+    HCResult results= HillClimbing(rastrigin,X,D,l,bd,variant[i]);
+    cout<<"Hill Climbing with variant : " <<variant[i]<<endl;
     cout<<"Minimum Value: "<< results.best_val<<endl;
     cout<<"Nr of iterations: "<< results.nrIterations << endl;
     cout<<"Average Time: "<< results.time<< endl;
-
+*/
 
     return 0;
 }
